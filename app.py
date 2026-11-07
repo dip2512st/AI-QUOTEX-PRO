@@ -72,7 +72,7 @@ div[data-testid="stDataFrame"] {{border:1px solid {border_color}}}
 """, unsafe_allow_html=True)
 
 st.title("📈 AI QUOTEX PRO")
-st.caption("Forex • OTC Screenshot Review • Binance Spot & Futures | Version 2.4")
+st.caption("Forex • OTC Screenshot Review • Binance Spot & Futures | Version 2.5")
 
 st.warning(
     "Research prototype only. Signals are not guaranteed, scores are not "
@@ -82,15 +82,42 @@ st.warning(
 # -------------------------
 # BINANCE PUBLIC MARKET ANALYZER
 # -------------------------
+def _binance_get(path, market, params=None, timeout=20):
+    """Try Binance's documented public API host alternatives when one host is blocked."""
+    if market == "Futures":
+        hosts = ["https://fapi.binance.com", "https://fapi1.binance.com"]
+    else:
+        hosts = [
+            "https://api.binance.com",
+            "https://api1.binance.com",
+            "https://api2.binance.com",
+            "https://api3.binance.com",
+            "https://api4.binance.com",
+        ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; AI-QUOTEX-PRO/2.5; public-market-data)",
+        "Accept": "application/json",
+    }
+    errors = []
+    for host in hosts:
+        try:
+            response = requests.get(host + path, params=params, headers=headers, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            errors.append(f"{host} ({status or type(exc).__name__})")
+    raise ConnectionError(
+        "All Binance public API hosts failed: " + ", ".join(errors)
+        + ". The hosting region/network may be restricting Binance; try again later or deploy from another region."
+    )
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def binance_symbol_catalog(market):
     """Fetch every currently tradable USDT-quoted symbol from Binance public exchange info."""
-    if market == "Futures":
-        url = "https://fapi.binance.com/fapi/v1/exchangeInfo"
-    else:
-        url = "https://api.binance.com/api/v3/exchangeInfo"
-    response = requests.get(url, timeout=20)
-    response.raise_for_status()
+    path = "/fapi/v1/exchangeInfo" if market == "Futures" else "/api/v3/exchangeInfo"
+    response = _binance_get(path, market, timeout=20)
     payload = response.json()
     symbols = []
     for item in payload.get("symbols", []):
@@ -109,10 +136,12 @@ def binance_symbol_catalog(market):
 
 @st.cache_data(ttl=30, show_spinner=False)
 def binance_klines(symbol, market, interval, limit=300):
-    base = "https://fapi.binance.com" if market == "Futures" else "https://api.binance.com"
     path = "/fapi/v1/klines" if market == "Futures" else "/api/v3/klines"
-    r = requests.get(base + path, params={"symbol": symbol, "interval": interval, "limit": limit}, timeout=15)
-    r.raise_for_status()
+    r = _binance_get(
+        path, market,
+        params={"symbol": symbol, "interval": interval, "limit": limit},
+        timeout=20,
+    )
     raw = r.json()
     if not isinstance(raw, list) or len(raw) < 80:
         raise ValueError("Binance returned insufficient candle history.")
