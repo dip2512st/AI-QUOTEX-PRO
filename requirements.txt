@@ -1,2 +1,7 @@
-streamlit\npandas\nnumpy\nyfinance\nplotly\nstreamlit-autorefresh\nopenai\n
-requests
+streamlit
+pandas
+numpy
+yfinance
+plotly
+streamlit-autorefresh
+openai
